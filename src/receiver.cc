@@ -59,7 +59,7 @@ bool detect_bit(struct config *config, int interval) {
 #define CL_NUM(l) ((((uint64_t)(l / 2)) * 3 + 14) % CL_IN_PAGE)
 // #define BITID_2_ARRINDEX(l)                                                    \
 //   (PG_NUM(l) * ENTRY_PER_PAGE + CL_NUM(l) * ENTRY_PER_CL)
-#define BITID_2_ARRINDEX(l) (l * 64)
+#define BITID_2_ARRINDEX(l) (l * 16)
 
 // Beating the LLC Replacement Policy (Access older lines)
 #define TX_ACCESS_LAG_DELTA (5000)

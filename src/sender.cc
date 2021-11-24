@@ -45,7 +45,7 @@ void send_bit_init_FR(bool one, struct config *config, int interval) {
 #define CL_NUM(l) ((((uint64_t)(l / 2)) * 3 + 14) % CL_IN_PAGE)
 // #define BITID_2_ARRINDEX(l)                                                    \
 //   (PG_NUM(l) * ENTRY_PER_PAGE + CL_NUM(l) * ENTRY_PER_CL)
-#define BITID_2_ARRINDEX(l) (l * 64)
+#define BITID_2_ARRINDEX(l) (l * 16)
 
 // Beating the LLC Replacement Policy (Access older lines)
 #define TX_ACCESS_LAG_DELTA (5000)
@@ -349,17 +349,19 @@ int main(int argc, char **argv) {
     uint64_t curr_arrindex =
         (BITID_2_ARRINDEX(curr_bitid)) % SHARED_ARRAY_NUMENTRIES + 4;
 
-    // Based on Payload value (0/1), Mask = 0x0000000.. if Payload=0, or
-    // 0xFFFFFFF.. if Payload=1
-    uint64_t payload_mask_0 = 0 - ((uint64_t)curr_payload & (uint64_t)1);
-    uint64_t payload_mask_1 = ~payload_mask_0;
+    // // Based on Payload value (0/1), Mask = 0x0000000.. if Payload=0, or
+    // // 0xFFFFFFF.. if Payload=1
+    // uint64_t payload_mask_0 = 0 - ((uint64_t)curr_payload & (uint64_t)1);
+    // uint64_t payload_mask_1 = ~payload_mask_0;
 
-    // access corresponding array index
-    uintptr_t addr_1 = (uintptr_t)&SHARED_ARRAY[curr_arrindex] &
-                       (uintptr_t)payload_mask_1; // will be 0x00 if Payload=1
-    uintptr_t addr_0 = (uintptr_t)&TX_PRIVATE_ARRAY[0] &
-                       (uintptr_t)payload_mask_0; // will be 0x00 if Payload=0
-    volatile uint64_t *addr = (uint64_t *)(addr_1 | addr_0);
+    // // access corresponding array index
+    // uintptr_t addr_1 = (uintptr_t)&SHARED_ARRAY[curr_arrindex] &
+    //                    (uintptr_t)payload_mask_1; // will be 0x00 if
+    //                    Payload=1
+    // uintptr_t addr_0 = (uintptr_t)&TX_PRIVATE_ARRAY[0] &
+    //                    (uintptr_t)payload_mask_0; // will be 0x00 if
+    //                    Payload=0
+    // volatile uint64_t *addr = (uint64_t *)(addr_1 | addr_0);
 
     unsigned int junk = 0;
 
