@@ -70,12 +70,12 @@ bool detect_bit(struct config *config, int interval) {
 #define RX_SYNC_SLEEP (1000)
 // Frequency of Sync
 #ifndef SYNC_FREQ_SENSITIVITY
-#define TX_SYNC_BITFREQ (200000)
+#define TX_SYNC_BITFREQ (10000)
 #else
 #define TX_SYNC_BITFREQ (SYNC_FREQ_SENSITIVITY)
 #endif
 // Gap Between TX and RX At Syncronization
-#define TX_SYNC_LAG_DELTA (180000) /*cross-core */
+#define TX_SYNC_LAG_DELTA (20000) /*cross-core */
 // Timeout after which Rx exits sync
 #define RX_SYNC_TIMEOUT (5 * 100 * 5000)
 
@@ -394,6 +394,8 @@ int main(int argc, char **argv) {
     delta_time0 =
         __rdtscp(&junk) - time0; /* READ TIMER & COMPUTE ELAPSED TIME */
 
+    __rdtscp(&junk);
+    __rdtscp(&junk);
     // delta_time0 = junk % 512;
     // delta_time0++;
 
@@ -414,7 +416,7 @@ int main(int argc, char **argv) {
 #endif
 
     //--- Syncrhonization every TX_SYNC_BITFREQ -------
-    if ((rx_id % (TX_SYNC_BITFREQ)) == (TX_SYNC_BITFREQ - TX_SYNC_LAG_DELTA)) {
+    if ((rx_id % (TX_SYNC_BITFREQ)) == (TX_SYNC_BITFREQ - 1)) {
 
 #ifdef FR_BARRIER_SYNC
       // RX_SYNC
@@ -561,7 +563,7 @@ int main(int argc, char **argv) {
           sync_complete = true;
       }
       printf("receive sync complete\n");
-
+      delayloop(RX_DELAY_CYCLES);
       rxsync_complete_donetime = __rdtscp(&sync_junk);
       /* printf("%llu. \t Bit_Id:%d, Flush-Reload Sync Ends for Rx.
        * Rx-Delta:%llu\n",__rdtsc(), rx_id,sync_delta_time0); */
@@ -595,7 +597,7 @@ int main(int argc, char **argv) {
 
   //------ Construct Rx-Payload -----------
   for (uint64_t i = 0; i < rx_loop_count; i++) {
-    if (rx_time_obs[i] > 190)
+    if (rx_time_obs[i] > 150)
       rx_payload[i] = 1; // miss = 1
     else
       rx_payload[i] = 0; // hit = 0

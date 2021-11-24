@@ -56,7 +56,7 @@ void send_bit_init_FR(bool one, struct config *config, int interval) {
 #define RX_SYNC_SLEEP (1000)
 // Frequency of Sync
 #ifndef SYNC_FREQ_SENSITIVITY
-#define TX_SYNC_BITFREQ (200000)
+#define TX_SYNC_BITFREQ (10000)
 #else
 #define TX_SYNC_BITFREQ (SYNC_FREQ_SENSITIVITY)
 #endif
@@ -349,20 +349,6 @@ int main(int argc, char **argv) {
     uint64_t curr_arrindex =
         (BITID_2_ARRINDEX(curr_bitid)) % SHARED_ARRAY_NUMENTRIES + 4;
 
-    // // Based on Payload value (0/1), Mask = 0x0000000.. if Payload=0, or
-    // // 0xFFFFFFF.. if Payload=1
-    // uint64_t payload_mask_0 = 0 - ((uint64_t)curr_payload & (uint64_t)1);
-    // uint64_t payload_mask_1 = ~payload_mask_0;
-
-    // // access corresponding array index
-    // uintptr_t addr_1 = (uintptr_t)&SHARED_ARRAY[curr_arrindex] &
-    //                    (uintptr_t)payload_mask_1; // will be 0x00 if
-    //                    Payload=1
-    // uintptr_t addr_0 = (uintptr_t)&TX_PRIVATE_ARRAY[0] &
-    //                    (uintptr_t)payload_mask_0; // will be 0x00 if
-    //                    Payload=0
-    // volatile uint64_t *addr = (uint64_t *)(addr_1 | addr_0);
-
     unsigned int junk = 0;
 
     register uint64_t iter_begin = __rdtscp(&junk);
@@ -379,47 +365,6 @@ int main(int argc, char **argv) {
     register uint64_t iter_end = __rdtscp(&junk);
     acc += iter_end - iter_begin;
     // uint64_t temp = *addr;
-
-    // #if TX_ACCESS_LAG == 0
-    //     delta_time0 =
-    //         __rdtscp(&junk) - time0; /* READ TIMER & COMPUTE ELAPSED TIME */
-    // #endif
-
-    // #if TX_ACCESS_LAG
-    //     // Repeat Access to older line (N-behind)
-    //     int lag_bit_id = bit_id - TX_ACCESS_LAG_DELTA;
-    //     if (lag_bit_id > 0) {
-    //       int prev_payload = tx_payload[lag_bit_id];
-    //       // Get array index to communicate by getting curr_bitid ->
-    //       curr_arrindex) uint64_t prev_bitid = SHARED_SEED + lag_bit_id;
-    //       uint64_t prev_arrindex =
-    //           (BITID_2_ARRINDEX(prev_bitid)) % SHARED_ARRAY_NUMENTRIES + 4;
-
-    //       // Based on Payload value (0/1), Mask = 0x0000000.. if Payload=0,
-    //       or
-    //       // 0xFFFFFFF.. if Payload=1
-    //       uint64_t prev_payload_mask_0 = 0 - ((uint64_t)prev_payload &
-    //       (uint64_t)1); uint64_t prev_payload_mask_1 = ~prev_payload_mask_0;
-
-    //       // access corresponding array index
-    //       uintptr_t prev_addr_1 =
-    //           (uintptr_t)&SHARED_ARRAY[prev_arrindex] &
-    //           (uintptr_t)prev_payload_mask_1; // will be 0x00 if Payload=1
-    //       uintptr_t prev_addr_0 =
-    //           (uintptr_t)&TX_PRIVATE_ARRAY[0] &
-    //           (uintptr_t)prev_payload_mask_0; // will be 0x00 if Payload=0
-    //       volatile uint64_t *prev_addr = (uint64_t *)(prev_addr_1 |
-    //       prev_addr_0);
-
-    //       // unsigned int junk = 0;
-    //       // register uint64_t time0, delta_time0;
-    //       // time0 = __rdtscp( & junk); /* READ TIMER */
-
-    //       temp = *prev_addr;
-    //       // delta_time0 = __rdtscp( & junk) - time0; /* READ TIMER & COMPUTE
-    //       // ELAPSED TIME */
-    //     }
-    // #endif
 
 #ifdef PROGRESS_HEARTBEAT
     if ((bit_id % HEARTBEAT_FREQ) == (HEARTBEAT_FREQ - 1)) {
