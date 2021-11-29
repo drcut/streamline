@@ -65,17 +65,19 @@ bool detect_bit(struct config *config, int interval) {
 #define TX_ACCESS_LAG_DELTA (5000)
 #define TX_ACCESS_LAG (1)
 
+#define FLUSH_HIT_MISS_GAP (129)
+
 //-------- Synchronization ----------
 // Rx Delay Per Sync Iteration
 #define RX_SYNC_SLEEP (1000)
 // Frequency of Sync
 #ifndef SYNC_FREQ_SENSITIVITY
-#define TX_SYNC_BITFREQ (10000)
+#define TX_SYNC_BITFREQ (200000)
 #else
 #define TX_SYNC_BITFREQ (SYNC_FREQ_SENSITIVITY)
 #endif
 // Gap Between TX and RX At Syncronization
-#define TX_SYNC_LAG_DELTA (20000) /*cross-core */
+#define TX_SYNC_LAG_DELTA (4000) /*cross-core */
 // Timeout after which Rx exits sync
 #define RX_SYNC_TIMEOUT (5 * 100 * 5000)
 
@@ -378,7 +380,6 @@ int main(int argc, char **argv) {
   register double acc = 0;
   for (uint64_t rx_id = 0; rx_id < TRANSMITTED_BITS; rx_id++) {
     unsigned int junk = 0;
-    register uint64_t iter_begin = __rdtscp(&junk);
     register uint64_t time0, delta_time0;
 
     uint64_t curr_bitid = SHARED_SEED + rx_loop_count;
@@ -394,31 +395,15 @@ int main(int argc, char **argv) {
     delta_time0 =
         __rdtscp(&junk) - time0; /* READ TIMER & COMPUTE ELAPSED TIME */
 
-    __rdtscp(&junk);
-    __rdtscp(&junk);
-    // delta_time0 = junk % 512;
-    // delta_time0++;
-
     // Store Time0 and Time1 in obs_time_array_0[], obs_time_array_1[]
     rx_time_obs[rx_id] = delta_time0;
-    rx_time_obs_timestamp[rx_id % NUM_BITS_DEBUG_DTSTR] = time0;
+    // rx_time_obs_timestamp[rx_id % NUM_BITS_DEBUG_DTSTR] = time0;
 
-    register uint64_t iter_end = __rdtscp(&junk);
-    acc += iter_end - iter_begin;
-
-#ifdef PROGRESS_HEARTBEAT
-    if ((rx_id % HEARTBEAT_FREQ) == (HEARTBEAT_FREQ - 1)) {
-      uint64_t epoch_timestamp = __rdtscp(&junk_temp_rx);
-      rx_epoch_timestamp.push_back(epoch_timestamp);
-      // printf("Rx-Epoch
-      // Curr-BitID:%d,Timestamp:%llu\n\n",rx_id,epoch_timestamp);
-    }
-#endif
+    // register uint64_t iter_end = __rdtscp(&junk);
+    // acc += iter_end - iter_begin;
 
     //--- Syncrhonization every TX_SYNC_BITFREQ -------
-    if ((rx_id % (TX_SYNC_BITFREQ)) == (TX_SYNC_BITFREQ - 1)) {
-
-#ifdef FR_BARRIER_SYNC
+    if ((rx_id % (TX_SYNC_BITFREQ)) == (TX_SYNC_BITFREQ - TX_SYNC_LAG_DELTA)) {
       // RX_SYNC
       // 3. Flush-Reload based Synchronization
       volatile uint64_t *sync_rxready_addr = (&sync_rxready_page[0]);
@@ -493,22 +478,6 @@ int main(int argc, char **argv) {
 
         if (tx_ready_count >= 2)
           sync_start = true;
-
-        // #ifdef RX_SYNC_TIMEOUT
-        //         sleep_count++;
-
-        //         if (sleep_count * RX_SYNC_SLEEP > RX_SYNC_TIMEOUT) {
-        //           printf("time out\n");
-        //           sync_start = true;
-        //           sync_complete = true;
-
-        //           debug_rxsync_time.push_back(__rdtscp(&sync_junk) -
-        //                                       rxsync_reached_donetime);
-        //           debug_timeout_duration.push_back(RX_SYNC_TIMEOUT);
-        //           debug_timeout_bitid.push_back(rx_id);
-        //         }
-
-        // #endif
       }
       printf("receive sync start\n");
 
@@ -563,7 +532,7 @@ int main(int argc, char **argv) {
           sync_complete = true;
       }
       printf("receive sync complete\n");
-      delayloop(RX_DELAY_CYCLES);
+      // delayloop(RX_DELAY_CYCLES);
       rxsync_complete_donetime = __rdtscp(&sync_junk);
       /* printf("%llu. \t Bit_Id:%d, Flush-Reload Sync Ends for Rx.
        * Rx-Delta:%llu\n",__rdtsc(), rx_id,sync_delta_time0); */
@@ -571,21 +540,7 @@ int main(int argc, char **argv) {
       rxsync_reached_timevec.push_back(rxsync_reached_donetime);
       rxsync_start_timevec.push_back(rxsync_start_donetime);
       rxsync_complete_timevec.push_back(rxsync_complete_donetime);
-#endif
     }
-
-#if VERBOSE
-    printf("Rx: Curr-BitID:%d, Tx-Bit is:%d, Addr accessed:%#18x, PG_NUM:%d, "
-           "CL_NUM:%d Time:%d, Rx-Bit:%d,%s\n",
-           curr_bitid, tx_payload[rx_id], addr0, PG_NUM(curr_bitid),
-           CL_NUM(curr_bitid), delta_time0,
-           delta_time0 > LLC_HIT_THRESHOLD_CYCLES_COMM ? 1 : 0,
-           (delta_time0 > LLC_HIT_THRESHOLD_CYCLES_COMM ? 1 : 0) ==
-                   tx_payload[rx_id]
-               ? ""
-               : "Error");
-#endif
-
     rx_loop_count++;
   }
   printf("latency: %lf\n", acc / TRANSMITTED_BITS);
@@ -597,7 +552,7 @@ int main(int argc, char **argv) {
 
   //------ Construct Rx-Payload -----------
   for (uint64_t i = 0; i < rx_loop_count; i++) {
-    if (rx_time_obs[i] > 150)
+    if (rx_time_obs[i] > FLUSH_HIT_MISS_GAP)
       rx_payload[i] = 1; // miss = 1
     else
       rx_payload[i] = 0; // hit = 0

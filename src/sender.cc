@@ -43,8 +43,6 @@ void send_bit_init_FR(bool one, struct config *config, int interval) {
 #define PG_NUM(l)                                                              \
   (((uint64_t)(((uint64_t)(l / 2)) * 3 / CL_IN_PAGE)) * 2 + l % 2)
 #define CL_NUM(l) ((((uint64_t)(l / 2)) * 3 + 14) % CL_IN_PAGE)
-// #define BITID_2_ARRINDEX(l)                                                    \
-//   (PG_NUM(l) * ENTRY_PER_PAGE + CL_NUM(l) * ENTRY_PER_CL)
 #define BITID_2_ARRINDEX(l) (l * 16)
 
 // Beating the LLC Replacement Policy (Access older lines)
@@ -56,7 +54,7 @@ void send_bit_init_FR(bool one, struct config *config, int interval) {
 #define RX_SYNC_SLEEP (1000)
 // Frequency of Sync
 #ifndef SYNC_FREQ_SENSITIVITY
-#define TX_SYNC_BITFREQ (10000)
+#define TX_SYNC_BITFREQ (200000)
 #else
 #define TX_SYNC_BITFREQ (SYNC_FREQ_SENSITIVITY)
 #endif
@@ -351,49 +349,45 @@ int main(int argc, char **argv) {
 
     unsigned int junk = 0;
 
-    register uint64_t iter_begin = __rdtscp(&junk);
+    // register uint64_t iter_begin = __rdtscp(&junk);
     register uint64_t time0, delta_time0;
 
-    time0 = __rdtscp(&junk); /* READ TIMER */
+    // time0 = __rdtscp(&junk); /* READ TIMER */
+    junk += SHARED_ARRAY[curr_arrindex];
     if (curr_payload) {
-      // dirty
-      SHARED_ARRAY[curr_arrindex] += junk;
+      // flush hit
+      1;
     } else {
-      // clean
-      junk += SHARED_ARRAY[curr_arrindex];
+      // flush miss
+      _mm_clflush(&SHARED_ARRAY[curr_arrindex]);
     }
-    register uint64_t iter_end = __rdtscp(&junk);
-    acc += iter_end - iter_begin;
+    // register uint64_t iter_end = __rdtscp(&junk);
+    // acc += iter_end - iter_begin;
     // uint64_t temp = *addr;
 
-#ifdef PROGRESS_HEARTBEAT
-    if ((bit_id % HEARTBEAT_FREQ) == (HEARTBEAT_FREQ - 1)) {
-      uint64_t epoch_timestamp = __rdtscp(&junk_temp_tx);
-      tx_epoch_timestamp.push_back(epoch_timestamp);
-      // printf("Tx-Epoch
-      // Curr-BitID:%d,Time-Epoch:%llu\n",bit_id,epoch_timestamp);
+    {
+      // Repeat Access to older line (N-behind)
+      int lag_bit_id = bit_id - TX_ACCESS_LAG_DELTA;
+      if (lag_bit_id > 0) {
+        int prev_payload = tx_payload[lag_bit_id];
+        // Get array index to communicate by getting curr_bitid->curr_arrindex)
+        uint64_t prev_bitid = SHARED_SEED + lag_bit_id;
+        uint64_t prev_arrindex =
+            (BITID_2_ARRINDEX(prev_bitid)) % SHARED_ARRAY_NUMENTRIES + 4;
+
+        junk += SHARED_ARRAY[prev_arrindex];
+        if (prev_payload) {
+          // flush hit
+          1;
+        } else {
+          // flush miss
+          _mm_clflush(&SHARED_ARRAY[prev_arrindex]);
+        }
+      }
     }
-#endif
-
-#if VERBOSE
-    // Print the index and addr accessed.
-    printf("Tx: Curr-BitID:%d, Payload is:%d, Addr accessed:%#18x. Time=%d\n",
-           curr_bitid, curr_payload, addr, delta_time0);
-#endif
-
-    tx_time_obs[bit_id % NUM_BITS_DEBUG_DTSTR] = delta_time0;
-    tx_time_obs_timestamp[bit_id % NUM_BITS_DEBUG_DTSTR] = time0;
 
     //------- Synchronization every TX_SYNC_BITFREQ -------
     if ((bit_id % (TX_SYNC_BITFREQ)) == (TX_SYNC_BITFREQ - 1)) {
-      printf("sender sync begin\n");
-#ifdef DELAY_SYNC
-      // 1. Static Delays (400k cycles every 20k)
-      uint64_t sleep_cycles = (TX_DELAY_CYCLES);
-      delayloop(sleep_cycles);
-#endif
-
-#ifdef FR_BARRIER_SYNC
       // TX_SYNC
       // 3. Flush-Reload based Synchronization
       volatile uint64_t *sync_rxready_addr = (&sync_rxready_page[0]);
@@ -410,9 +404,6 @@ int main(int argc, char **argv) {
           sync_delta_time1, sync_time2, sync_delta_time2;
 
       register uint64_t txsync_reached_donetime, txsync_complete_donetime;
-
-      /* printf("%llu. \t Bit_Id:%d, Flush-Reload Sync Starts for
-       * Tx.\n",__rdtsc(), bit_id); */
 
       txsync_reached_donetime = __rdtscp(&sync_junk);
 
@@ -462,15 +453,9 @@ int main(int argc, char **argv) {
           sync_complete = true;
         }
       }
-      txsync_complete_donetime = __rdtscp(&sync_junk);
-
-      txsync_reached_timevec.push_back(txsync_reached_donetime);
-      txsync_complete_timevec.push_back(txsync_complete_donetime);
-      printf("sender sync done\n");
-#endif
+      // txsync_complete_donetime = __rdtscp(&sync_junk);
     }
   }
-  printf("latency: %lf\n", acc / TRANSMITTED_BITS);
   printf("Sender finished\n");
   return 0;
 }
