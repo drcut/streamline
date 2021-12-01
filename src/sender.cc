@@ -43,7 +43,7 @@ void send_bit_init_FR(bool one, struct config *config, int interval) {
 #define PG_NUM(l)                                                              \
   (((uint64_t)(((uint64_t)(l / 2)) * 3 / CL_IN_PAGE)) * 2 + l % 2)
 #define CL_NUM(l) ((((uint64_t)(l / 2)) * 3 + 14) % CL_IN_PAGE)
-#define BITID_2_ARRINDEX(l) (l * 16)
+#define BITID_2_ARRINDEX(l) ((l)*16)
 
 // Beating the LLC Replacement Policy (Access older lines)
 #define TX_ACCESS_LAG_DELTA (5000)
@@ -54,7 +54,7 @@ void send_bit_init_FR(bool one, struct config *config, int interval) {
 #define RX_SYNC_SLEEP (1000)
 // Frequency of Sync
 #ifndef SYNC_FREQ_SENSITIVITY
-#define TX_SYNC_BITFREQ (200000)
+#define TX_SYNC_BITFREQ (20000)
 #else
 #define TX_SYNC_BITFREQ (SYNC_FREQ_SENSITIVITY)
 #endif
@@ -337,6 +337,7 @@ int main(int argc, char **argv) {
   // Start Tx
   uint64_t bit_id = 0;
   unsigned int junk_temp_tx = 0;
+  unsigned int junk = 0;
 
   double acc = 0;
   for (bit_id = 0; bit_id < TRANSMITTED_BITS; bit_id++) {
@@ -344,22 +345,24 @@ int main(int argc, char **argv) {
     int curr_payload = tx_payload[bit_id];
     // Get array index to communicate by getting curr_bitid -> curr_arrindex)
     uint64_t curr_bitid = SHARED_SEED + bit_id;
-    uint64_t curr_arrindex =
-        (BITID_2_ARRINDEX(curr_bitid)) % SHARED_ARRAY_NUMENTRIES + 4;
 
-    unsigned int junk = 0;
+    for (int j = 0; j < 2; j++) {
+      uint64_t curr_arrindex =
+          (BITID_2_ARRINDEX(curr_bitid * 2 + j)) % SHARED_ARRAY_NUMENTRIES + 4;
 
-    // register uint64_t iter_begin = __rdtscp(&junk);
-    register uint64_t time0, delta_time0;
+      // register uint64_t iter_begin = __rdtscp(&junk);
+      register uint64_t time0, delta_time0;
 
-    // time0 = __rdtscp(&junk); /* READ TIMER */
-    junk += SHARED_ARRAY[curr_arrindex];
-    if (curr_payload) {
-      // flush hit
-      1;
-    } else {
-      // flush miss
-      _mm_clflush(&SHARED_ARRAY[curr_arrindex]);
+      junk += SHARED_ARRAY[curr_arrindex];
+      if (curr_payload) {
+        // flush hit
+        // 1;
+        // _mm_clflush(&SHARED_ARRAY[curr_arrindex]);
+      } else {
+        // flush miss
+        _mm_clflush(&SHARED_ARRAY[curr_arrindex]);
+        // 1;
+      }
     }
     // register uint64_t iter_end = __rdtscp(&junk);
     // acc += iter_end - iter_begin;
@@ -372,16 +375,19 @@ int main(int argc, char **argv) {
         int prev_payload = tx_payload[lag_bit_id];
         // Get array index to communicate by getting curr_bitid->curr_arrindex)
         uint64_t prev_bitid = SHARED_SEED + lag_bit_id;
-        uint64_t prev_arrindex =
-            (BITID_2_ARRINDEX(prev_bitid)) % SHARED_ARRAY_NUMENTRIES + 4;
+        for (int j = 0; j < 2; j++) {
+          uint64_t prev_arrindex =
+              (BITID_2_ARRINDEX(prev_bitid * 2 + j)) % SHARED_ARRAY_NUMENTRIES +
+              4;
 
-        junk += SHARED_ARRAY[prev_arrindex];
-        if (prev_payload) {
-          // flush hit
-          1;
-        } else {
-          // flush miss
-          _mm_clflush(&SHARED_ARRAY[prev_arrindex]);
+          junk += SHARED_ARRAY[prev_arrindex];
+          if (prev_payload) {
+            // flush hit
+            1;
+          } else {
+            // flush miss
+            _mm_clflush(&SHARED_ARRAY[prev_arrindex]);
+          }
         }
       }
     }

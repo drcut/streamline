@@ -59,20 +59,20 @@ bool detect_bit(struct config *config, int interval) {
 #define CL_NUM(l) ((((uint64_t)(l / 2)) * 3 + 14) % CL_IN_PAGE)
 // #define BITID_2_ARRINDEX(l)                                                    \
 //   (PG_NUM(l) * ENTRY_PER_PAGE + CL_NUM(l) * ENTRY_PER_CL)
-#define BITID_2_ARRINDEX(l) (l * 16)
+#define BITID_2_ARRINDEX(l) ((l)*16)
 
 // Beating the LLC Replacement Policy (Access older lines)
 #define TX_ACCESS_LAG_DELTA (5000)
 #define TX_ACCESS_LAG (1)
 
-#define FLUSH_HIT_MISS_GAP (129)
+#define FLUSH_HIT_MISS_GAP (208)
 
 //-------- Synchronization ----------
 // Rx Delay Per Sync Iteration
 #define RX_SYNC_SLEEP (1000)
 // Frequency of Sync
 #ifndef SYNC_FREQ_SENSITIVITY
-#define TX_SYNC_BITFREQ (200000)
+#define TX_SYNC_BITFREQ (20000)
 #else
 #define TX_SYNC_BITFREQ (SYNC_FREQ_SENSITIVITY)
 #endif
@@ -383,18 +383,24 @@ int main(int argc, char **argv) {
     register uint64_t time0, delta_time0;
 
     uint64_t curr_bitid = SHARED_SEED + rx_loop_count;
-    uint64_t curr_arrindex =
-        (BITID_2_ARRINDEX(curr_bitid)) % SHARED_ARRAY_NUMENTRIES + 4;
-    volatile uint64_t *addr0 = &SHARED_ARRAY[curr_arrindex];
-
-    // Get time for reading addr0
+    uint64_t curr_arrindex[32];
+    for (int j = 0; j < 2; j++) {
+      curr_arrindex[j] =
+          (BITID_2_ARRINDEX(curr_bitid * 2 + j)) % SHARED_ARRAY_NUMENTRIES + 4;
+      // junk += SHARED_ARRAY[curr_arrindex[j]];
+    }
+    _mm_mfence();
     time0 = __rdtscp(&junk); /* READ TIMER */
-    // junk = *addr0;
-    _mm_clflush(&SHARED_ARRAY[curr_arrindex]);
+    for (int j = 0; j < 2; j++) {
+      // uint64_t curr_arrindex =
+      //     (BITID_2_ARRINDEX(curr_bitid * 128 + j)) % SHARED_ARRAY_NUMENTRIES
+      //     + 4;
+      _mm_clflush(&SHARED_ARRAY[curr_arrindex[j]]);
+    }
     _mm_mfence();
     delta_time0 =
         __rdtscp(&junk) - time0; /* READ TIMER & COMPUTE ELAPSED TIME */
-
+    // printf("delta: %d\n", delta_time0);
     // Store Time0 and Time1 in obs_time_array_0[], obs_time_array_1[]
     rx_time_obs[rx_id] = delta_time0;
     // rx_time_obs_timestamp[rx_id % NUM_BITS_DEBUG_DTSTR] = time0;
@@ -437,7 +443,6 @@ int main(int argc, char **argv) {
 
       // Check if Tx has reached barrier.
       uint64_t sleep_count = 0;
-      printf("receive sync not start\n");
       while (!(sync_start)) {
         int tx_ready_count = 0;
         // a. Flush addr where Tx will communicate (sync_txready_addr)
@@ -479,7 +484,6 @@ int main(int argc, char **argv) {
         if (tx_ready_count >= 2)
           sync_start = true;
       }
-      printf("receive sync start\n");
 
       rxsync_start_donetime = __rdtscp(&sync_junk);
 
@@ -512,7 +516,8 @@ int main(int argc, char **argv) {
         // Continue until 3/3 or 4/5 loads are LLC-Hits (Flush stops from
         // Tx-side, so Tx has exited the barrier)
         /* llc_hit_count = (sync_delta_time0
-         * <LLC_HIT_THRESHOLD_CYCLES_SYNC)?llc_hit_count+1:llc_hit_count-1 ; */
+         * <LLC_HIT_THRESHOLD_CYCLES_SYNC)?llc_hit_count+1:llc_hit_count-1 ;
+         */
         /* if(llc_hit_count < 0) */
         /*   llc_hit_count = 0; */
 
@@ -531,7 +536,6 @@ int main(int argc, char **argv) {
         if (llc_hit_count >= 30)
           sync_complete = true;
       }
-      printf("receive sync complete\n");
       // delayloop(RX_DELAY_CYCLES);
       rxsync_complete_donetime = __rdtscp(&sync_junk);
       /* printf("%llu. \t Bit_Id:%d, Flush-Reload Sync Ends for Rx.
@@ -543,7 +547,6 @@ int main(int argc, char **argv) {
     }
     rx_loop_count++;
   }
-  printf("latency: %lf\n", acc / TRANSMITTED_BITS);
 
   // Mark End Time
   rx_end_time = __rdtscp(&junk_temp);
